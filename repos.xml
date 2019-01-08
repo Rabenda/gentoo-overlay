@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<repositories xmlns="" version="1.0">
+  <repo quality="experimental" status="unofficial">
+    <name>rabenda-overlay</name>
+    <description>Rabenda's overlay for Rabenda's gentoo</description>
+    <homepage>https://github.com/Rabenda/gentoo-overlay</homepage>
+    <owner type="project">
+      <email>rabenda.cn+gentoo@gmail.com</email>
+      <name>rabenda-overlay</name>
+    </owner>
+    <source type="git">https://github.com/Rabenda/gentoo-overlay.git</source>
+  </repo>
+</repositories>
