@@ -1,141 +1,148 @@
-# Copyright 1999-2019 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI=6
 
-CMAKE_MIN_VERSION="3.8"
-
-inherit eutils gnome2-utils xdg cmake-utils toolchain-funcs flag-o-matic multilib git-r3 patches
+inherit cmake-utils desktop flag-o-matic git-r3 gnome2-utils toolchain-funcs xdg
 
 DESCRIPTION="Official desktop client for Telegram"
 HOMEPAGE="https://desktop.telegram.org"
+EGIT_REPO_URI="https://github.com/telegramdesktop/tdesktop.git"
+EGIT_SUBMODULES=(
+	Telegram/ThirdParty/crl
+	Telegram/ThirdParty/libtgvoip
+	Telegram/ThirdParty/variant
+	Telegram/ThirdParty/GSL
+)
 
-if [[ "${PV}" == 9999 ]]; then
-	KEYWORDS=""
+if [[ ${PV} == 9999 ]]; then
 	EGIT_BRANCH="dev"
+	KEYWORDS=""
 else
 	EGIT_COMMIT="v${PV}"
 	KEYWORDS="~amd64 ~x86"
 fi
 
-EGIT_REPO_URI="https://github.com/telegramdesktop/tdesktop"
-EGIT_SUBMODULES=( '*' -Telegram/ThirdParty/{xxHash,Catch} )
-
 LICENSE="GPL-3-with-openssl-exception"
 SLOT="0"
-IUSE="crash-report custom-api-id debug +gtk3 openal-eff +pulseaudio libressl wide-baloons"
-# upstream-api-id"
+IUSE="crashreporter custom-api-id debug effects gtk3 pulseaudio test"
 
-# ^ libav support?
-
-COMMON_DEPEND="
-	dev-qt/qtcore:5=
-	dev-qt/qtdbus:5=
-	dev-qt/qtgui:5=[xcb,jpeg,png]
-	dev-qt/qtwidgets:5=[xcb,png]
-	dev-qt/qtnetwork:5=
-	dev-qt/qtimageformats:5=
-	dev-cpp/range-v3
+RDEPEND="
+	dev-libs/openssl:0
 	dev-libs/xxhash
-	media-video/ffmpeg:=
+	dev-qt/qtcore:5
+	dev-qt/qtdbus:5
+	dev-qt/qtgui:5[jpeg,png,xcb]
+	dev-qt/qtnetwork:5
+	dev-qt/qtimageformats:5
+	dev-qt/qtwidgets:5[png,xcb]
 	media-libs/opus
+	sys-libs/zlib[minizip]
+	virtual/ffmpeg
 	x11-libs/libdrm
 	x11-libs/libva[X,drm]
-	sys-libs/zlib[minizip]
+	x11-libs/libX11
+	!net-im/telegram-desktop-bin
+	crashreporter? ( dev-util/google-breakpad )
+	effects? ( >=media-libs/openal-1.19.0 )
+	!effects? ( media-libs/openal )
 	gtk3? (
 		x11-libs/gtk+:3
 		dev-libs/libappindicator:3
-		>=dev-qt/qtgui-5.7:5[gtk(+)]
+		dev-qt/qtgui:5[gtk(+)]
 	)
-	media-libs/openal
-	libressl? ( dev-libs/libressl:= )
-	!libressl? ( dev-libs/openssl:0= )
-	x11-libs/libX11
-	crash-report? ( dev-util/google-breakpad )
-	!net-im/telegram
-	!net-im/telegram-desktop-bin
-	openal-eff? ( >=media-libs/openal-1.19.1 )
 	pulseaudio? ( media-sound/pulseaudio )
+	test? ( dev-cpp/catch )
 "
 
-RDEPEND="
-	${COMMON_DEPEND}
-"
-
-DEPEND="
-	|| ( >=sys-devel/gcc-7.3.0 sys-devel/clang )
+DEPEND="${RDEPEND}
 	virtual/pkgconfig
-	${COMMON_DEPEND}
 "
 
+CMAKE_MIN_VERSION="3.8"
 CMAKE_USE_DIR="${S}/Telegram"
+
+PATCHES=( "${FILESDIR}/patches" )
+
+pkg_pretend() {
+	if use custom-api-id; then
+		[[ -n "${TDESKTOP_API_ID}" ]] && \
+		[[ -n "${TDESKTOP_API_HASH}" ]] && (
+			einfo "Will be used custom 'api_id' and 'api_hash':"
+			einfo "TDESKTOP_API_ID=${TDESKTOP_API_ID}"
+			einfo "TDESKTOP_API_HASH=${TDESKTOP_API_HASH//[!\*]/*}"
+		) || (
+			eerror "It seems you did not set one or both of"
+			eerror "TDESKTOP_API_ID and TDESKTOP_API_HASH variables,"
+			eerror "which are required for custom-api-id USE-flag."
+			eerror "You can set them either in your env or bashrc."
+			die
+		)
+	fi
+
+	if tc-is-gcc && [[ $(gcc-major-version) -lt 7 ]] ; then
+		die "At least gcc 7.0 is required"
+	fi
+}
+
+src_unpack() {
+	git-r3_src_unpack
+
+	unset EGIT_COMMIT
+	unset EGIT_SUBMODULES
+
+	EGIT_REPO_URI="https://github.com/ericniebler/range-v3.git"
+	EGIT_CHECKOUT_DIR="${WORKDIR}/range-v3"
+	EGIT_COMMIT_DATE=$(GIT_DIR="${S}/.git" git show -s --format=%ct || die)
+
+	git-r3_src_unpack
+}
 
 src_prepare() {
 	local CMAKE_MODULES_DIR="${S}/Telegram/cmake"
 	local THIRD_PARTY_DIR="${S}/Telegram/ThirdParty"
 	local LIBTGVOIP_DIR="${THIRD_PARTY_DIR}/libtgvoip"
 
-	cp "${FILESDIR}/cmake/Telegram.cmake" "${S}/Telegram/CMakeLists.txt"
-	cp "${FILESDIR}/cmake/ThirdParty-crl.cmake" "${THIRD_PARTY_DIR}/crl/CMakeLists.txt"
-	cp "${FILESDIR}/cmake/ThirdParty-libtgvoip.cmake" "${LIBTGVOIP_DIR}/CMakeLists.txt"
-	cp "${FILESDIR}/cmake/ThirdParty-libtgvoip-webrtc.cmake" \
-		"${LIBTGVOIP_DIR}/webrtc_dsp/CMakeLists.txt"
+	cp "${FILESDIR}/Telegram.cmake" "${S}/Telegram/CMakeLists.txt"
+	cp "${FILESDIR}/ThirdParty-crl.cmake" "${THIRD_PARTY_DIR}/crl/CMakeLists.txt"
+	cp "${FILESDIR}/ThirdParty-libtgvoip.cmake" "${LIBTGVOIP_DIR}/CMakeLists.txt"
 
 	mkdir "${CMAKE_MODULES_DIR}" || die
-	use crash-report && cp "${FILESDIR}/cmake/FindBreakpad.cmake" "${CMAKE_MODULES_DIR}"
-	cp "${FILESDIR}/cmake/TelegramCodegen.cmake" "${CMAKE_MODULES_DIR}"
-	cp "${FILESDIR}/cmake/TelegramCodegenTools.cmake" "${CMAKE_MODULES_DIR}"
-	cp "${FILESDIR}/cmake/TelegramTests.cmake" "${CMAKE_MODULES_DIR}"
+	cp "${FILESDIR}/FindBreakpad.cmake" "${CMAKE_MODULES_DIR}"
+	cp "${FILESDIR}/TelegramCodegen.cmake" "${CMAKE_MODULES_DIR}"
+	cp "${FILESDIR}/TelegramCodegenTools.cmake" "${CMAKE_MODULES_DIR}"
+	cp "${FILESDIR}/TelegramTests.cmake" "${CMAKE_MODULES_DIR}"
 
-	patches_src_prepare
+	cmake-utils_src_prepare
 
-	if use custom-api-id; then
-		if [[ -n "${TELEGRAM_CUSTOM_API_ID}" ]] && [[ -n "${TELEGRAM_CUSTOM_API_HASH}" ]]; then
-			echo "Your custom ApiId is ${TELEGRAM_CUSTOM_API_ID}"
-			echo "Your custom ApiHash is ${TELEGRAM_CUSTOM_API_HASH}"
-		else
-			eerror ""
-			eerror "It seems you did not set one or both of TELEGRAM_CUSTOM_API_ID and TELEGRAM_CUSTOM_API_HASH variables,"
-			eerror "which are required for custom-api-id USE-flag."
-			eerror "You can set them either in:"
-			eerror "- /etc/portage/make.conf (globally, so all applications you'll build will see that ID and HASH"
-			eerror "- /etc/portage/env/${CATEGORY}/${PN} (privately for this package builds)"
-			eerror ""
-			die "You should correctly set TELEGRAM_CUSTOM_API_ID && TELEGRAM_CUSTOM_API_HASH variables if you want custom-api-id USE-flag"
-		fi
+	if ! use custom-api-id; then
+		sed -i -e '/error.*API_ID.*API_HASH/d' \
+			Telegram/SourceFiles/config.h || die
 	fi
-	mv "${S}"/lib/xdg/telegram{,-}desktop.desktop || die "Failed to fix .desktop-file name"
+
+	mv lib/xdg/telegram{,-}desktop.desktop || die "Failed to fix .desktop-file name"
 }
 
 src_configure() {
 	local mycxxflags=(
-		# ApiId and ApiHash are from Debian repository:
-		# https://salsa.debian.org/debian/telegram-desktop/blob/debian/master/debian/patches/Debian-API-ID.patch#L16
-		# The Telegram desktop developer John Preston thinks that Debian id/hash pair can be used in Gentoo ebuild:
-		# https://github.com/telegramdesktop/tdesktop/issues/4717#issuecomment-438152135
-		# The test pair from Telegram desktop repository: TDESKTOP_API_ID=17349 and TDESKTOP_API_HASH=344583e45741c457fe1862106095a5eb
-		$(usex custom-api-id "-DTDESKTOP_API_ID=${TELEGRAM_CUSTOM_API_ID}" "-DTDESKTOP_API_ID=50322")
-		$(usex custom-api-id "-DTDESKTOP_API_HASH=${TELEGRAM_CUSTOM_API_HASH}" "-DTDESKTOP_API_HASH=9ff1a639196c0779c86dd661af8522ba")
 		-DLIBDIR="$(get_libdir)"
-
-#		-DTDESKTOP_DISABLE_CRASH_REPORTS
-#		-DTDESKTOP_DISABLE_REGISTER_CUSTOM_SCHEME
-#		-DTDESKTOP_DISABLE_DESKTOP_FILE_GENERATION
+		-I"${WORKDIR}/range-v3/include"
 	)
 
 	local mycmakeargs=(
 		-DCMAKE_CXX_FLAGS:="${mycxxflags[*]}"
-		-DENABLE_CRASH_REPORTS="$(usex crash-report ON OFF)"
-		-DENABLE_GTK_INTEGRATION="$(usex gtk3 ON OFF)"
-		-DENABLE_OPENAL_EFFECTS="$(usex openal-eff ON OFF)"
-		-DENABLE_PULSEAUDIO=$(usex pulseaudio ON OFF)
-		-DBUILD_TESTS="OFF"
-		# ^ $(usex test)?
+		-DBUILD_TESTS=$(usex test)
+		-DENABLE_CRASH_REPORTS=$(usex crashreporter)
+		-DENABLE_GTK_INTEGRATION=$(usex gtk3)
+		-DENABLE_OPENAL_EFFECTS=$(usex effects)
+		-DENABLE_PULSEAUDIO=$(usex pulseaudio)
 	)
-	use crash-report && mycmakeargs+=(
-		-DBREAKPAD_CLIENT_INCLUDE_DIR="/usr/include/breakpad"
-		-DBREAKPAD_CLIENT_LIBRARY="/usr/$(get_libdir)/libbreakpad_client.a"
-	)
+
+	if ! use custom-api-id; then
+		unset TDESKTOP_API_ID
+		unset TDESKTOP_API_HASH
+	fi
+
 	cmake-utils_src_configure
 }
 

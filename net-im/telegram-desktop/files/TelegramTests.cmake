@@ -31,7 +31,7 @@ add_executable(tests_rpl
 	SourceFiles/base/tests_main.cpp
 )
 
-add_executable(tests_storage_set
+add_executable(tests_storage
 	SourceFiles/storage/storage_encrypted_file_tests.cpp
 	SourceFiles/storage/cache/storage_cache_database_tests.cpp
 	SourceFiles/base/tests_main.cpp
@@ -62,8 +62,7 @@ target_include_directories(tests_rpl PUBLIC
 	${THIRD_PARTY_DIR}/GSL/include
 	${THIRD_PARTY_DIR}/variant/include
 )
-
-target_include_directories(tests_storage_set PUBLIC
+target_include_directories(tests_storage PUBLIC
 	${catch_INCLUDE}
 	${THIRD_PARTY_DIR}/variant/test/include
 )
