@@ -6,3 +6,4 @@ Icon=/usr/share/pixmaps/jetbrains-toolbox.svg
 StartupNotify=false
 Terminal=false
 MimeType=x-scheme-handler/jetbrains;
+
